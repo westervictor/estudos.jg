@@ -1,0 +1,507 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'admin/css/order_admin.css' %}">
+<style>
+    .dashboard-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    
+    .stat-number {
+        font-size: 2.5em;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .stat-label {
+        color: #666;
+        text-transform: uppercase;
+        font-size: 0.9em;
+        letter-spacing: 1px;
+    }
+    
+    .chart-container {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .quick-actions {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+        margin: 20px 0;
+    }
+    
+    .quick-action-btn {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 15px;
+        text-align: center;
+        text-decoration: none;
+        color: #333;
+        transition: all 0.3s;
+    }
+    
+    .quick-action-btn:hover {
+        background: #e9ecef;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .quick-action-btn i {
+        font-size: 24px;
+        display: block;
+        margin-bottom: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h1>📊 Dashboard de Pedidos</h1>
+    <p>Resumo completo das operações - {{ today|date:"d/m/Y" }}</p>
+</div>
+
+<!-- Ações Rápidas -->
+<div class="quick-actions">
+    <a href="{% url 'admin:orders_order_add' %}" class="quick-action-btn">
+        <i>➕</i>
+        Novo Pedido
+    </a>
+    <a href="{% url 'admin:orders_order_changelist' %}?status__exact=open" class="quick-action-btn">
+        <i>🟡</i>
+        Pedidos Abertos
+    </a>
+    <a href="{% url 'admin:orders_order_changelist' %}?status__exact=preparing" class="quick-action-btn">
+        <i>👨‍🍳</i>
+        Em Preparo
+    </a>
+    <a href="{% url 'admin:orders_order_changelist' %}?status__exact=ready" class="quick-action-btn">
+        <i>✅</i>
+        Prontos
+    </a>
+</div>
+
+<!-- Cards de Estatísticas -->
+<div class="dashboard-grid">
+    <div class="stat-card">
+        <div class="stat-number" id="totalOrdersToday">{{ total_orders_today }}</div>
+        <div class="stat-label">Pedidos Hoje</div>
+        <small>Desde 00:00</small>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-number" id="totalRevenueToday">R$ {{ total_revenue_today|default:"0.00"|floatformat:2 }}</div>
+        <div class="stat-label">Faturamento Hoje</div>
+        <small>Apenas pedidos pagos</small>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-number" id="avgPrepTime">{{ avg_preparation_time|default:"0"|floatformat:0 }} min</div>
+        <div class="stat-label">Tempo Médio</div>
+        <small>Tempo de preparo</small>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-number" id="openOrders">
+            {% for status in orders_by_status %}
+                {% if status.status == 'open' %}{{ status.count }}{% endif %}
+            {% empty %}0{% endfor %}
+        </div>
+        <div class="stat-label">Abertos</div>
+        <small>Aguardando preparo</small>
+    </div>
+</div>
+
+<!-- Gráfico de Vendas -->
+<div class="chart-container">
+    <h3>📈 Vendas dos Últimos 7 Dias</h3>
+    <div style="height: 300px;">
+        <canvas id="salesChart"></canvas>
+    </div>
+</div>
+
+<!-- Top Produtos -->
+<div class="chart-container">
+    <h3>🍔 Produtos Mais Vendidos Hoje</h3>
+    <table class="order-table">
+        <thead>
+            <tr>
+                <th>Produto</th>
+                <th>Quantidade</th>
+                <th>Faturamento</th>
+            </tr>
+        </thead>
+        <tbody id="topProductsBody">
+            {% for product in top_products|slice:":5" %}
+            <tr>
+                <td>{{ product.product__name|default:"Desconhecido"|truncatechars:30 }}</td>
+                <td><strong>{{ product.total|default:0 }}</strong></td>
+                <td>R$ {{ product.revenue|default:"0.00"|floatformat:2 }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3" style="text-align: center; padding: 20px;">
+                    Nenhuma venda hoje
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Gráficos Menores -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
+    <div class="chart-container">
+        <h3>📋 Pedidos por Status</h3>
+        <div style="height: 250px;">
+            <canvas id="statusChart"></canvas>
+        </div>
+    </div>
+    
+    <div class="chart-container">
+        <h3>📊 Métricas do Dia</h3>
+        <div style="height: 250px;">
+            <canvas id="metricsChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Pedidos Recentes -->
+<div class="chart-container">
+    <h3>🕒 Pedidos Recentes</h3>
+    <table class="order-table">
+        <thead>
+            <tr>
+                <th>Nº Pedido</th>
+                <th>Cliente</th>
+                <th>Status</th>
+                <th>Total</th>
+                <th>Tempo</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody id="recentOrders">
+            {% for order in recent_orders|slice:":10" %}
+            <tr>
+                <td>
+                    <a href="{% url 'admin:orders_order_change' order.id %}">
+                        {{ order.order_number }}
+                    </a>
+                </td>
+                <td>{{ order.customer_name|default:"Cliente"|truncatechars:20 }}</td>
+                <td>
+                    <span class="badge status-{{ order.status }}">
+                        {{ order.get_status_display }}
+                    </span>
+                </td>
+                <td>R$ {{ order.total|floatformat:2 }}</td>
+                <td>{{ order.created_at|timesince }}</td>
+                <td>
+                    <a href="{% url 'admin:orders_order_change' order.id %}" class="button" style="padding: 2px 8px; font-size: 12px;">
+                        Ver
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6" style="text-align: center; padding: 20px;">
+                    Nenhum pedido recente
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}
+
+{% block extrajs %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Dados para os gráficos (convertendo QuerySet para JSON)
+const salesData = JSON.parse('{{ sales_data_json|escapejs }}' || '[]');
+const ordersByStatus = JSON.parse('{{ orders_by_status_json|escapejs }}' || '[]');
+
+// Helper para traduzir status
+function translateStatus(status) {
+    const statusMap = {
+        'open': 'Aberto',
+        'preparing': 'Em Preparo',
+        'ready': 'Pronto',
+        'out_for_delivery': 'Saiu para Entrega',
+        'delivered': 'Entregue',
+        'cancelled': 'Cancelado'
+    };
+    return statusMap[status] || status;
+}
+
+// Helper para cores dos status
+function getStatusColor(status) {
+    const colorMap = {
+        'open': '#007bff',
+        'preparing': '#fd7e14',
+        'ready': '#28a745',
+        'out_for_delivery': '#6f42c1',
+        'delivered': '#6c757d',
+        'cancelled': '#dc3545'
+    };
+    return colorMap[status] || '#6c757d';
+}
+
+// 1. Gráfico de Vendas
+if (document.getElementById('salesChart')) {
+    const salesCtx = document.getElementById('salesChart').getContext('2d');
+    
+    // Prepara dados
+    const dates = salesData.map(item => {
+        if (item.day) {
+            return new Date(item.day).toLocaleDateString('pt-BR', { 
+                weekday: 'short',
+                day: '2-digit' 
+            });
+        }
+        return '';
+    });
+    
+    const totals = salesData.map(item => parseFloat(item.total || 0));
+    const counts = salesData.map(item => parseInt(item.count || 0));
+
+    new Chart(salesCtx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [
+                {
+                    label: 'Faturamento (R$)',
+                    data: totals,
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Quantidade de Pedidos',
+                    data: counts,
+                    borderColor: '#fd7e14',
+                    backgroundColor: 'rgba(253, 126, 20, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Faturamento (R$)'
+                    },
+                    grid: {
+                        drawBorder: false
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Quantidade'
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                }
+            }
+        }
+    });
+}
+
+// 2. Gráfico de Status
+if (document.getElementById('statusChart')) {
+    const statusCtx = document.getElementById('statusChart').getContext('2d');
+    
+    const statusLabels = ordersByStatus.map(item => translateStatus(item.status));
+    const statusCounts = ordersByStatus.map(item => item.count || 0);
+    const statusColors = ordersByStatus.map(item => getStatusColor(item.status));
+
+    new Chart(statusCtx, {
+        type: 'doughnut',
+        data: {
+            labels: statusLabels,
+            datasets: [{
+                data: statusCounts,
+                backgroundColor: statusColors,
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.raw || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = Math.round((value / total) * 100);
+                            return `${label}: ${value} pedidos (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// 3. Gráfico de Métricas
+if (document.getElementById('metricsChart')) {
+    const metricsCtx = document.getElementById('metricsChart').getContext('2d');
+    
+    // Dados de exemplo para métricas
+    const metricsData = {
+        labels: ['Média Ticket', 'Itens/Pedido', 'Tempo Prep.', 'Satisfação'],
+        datasets: [{
+            label: 'Métricas',
+            data: [45.50, 3.2, 18, 4.5],
+            backgroundColor: [
+                'rgba(54, 162, 235, 0.8)',
+                'rgba(255, 99, 132, 0.8)',
+                'rgba(255, 206, 86, 0.8)',
+                'rgba(75, 192, 192, 0.8)'
+            ],
+            borderWidth: 1
+        }]
+    };
+
+    new Chart(metricsCtx, {
+        type: 'radar',
+        data: metricsData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    max: 50,
+                    ticks: {
+                        stepSize: 10
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+}
+
+// Atualização automática do dashboard
+let refreshInterval;
+
+function startAutoRefresh() {
+    // Atualiza a cada 30 segundos
+    refreshInterval = setInterval(() => {
+        fetch('?refresh=1')
+            .then(response => {
+                // Aqui você pode atualizar dados específicos se quiser
+                console.log('Dashboard atualizado:', new Date().toLocaleTimeString());
+            })
+            .catch(error => {
+                console.error('Erro ao atualizar dashboard:', error);
+            });
+    }, 30000);
+}
+
+function stopAutoRefresh() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+}
+
+// Inicia atualização automática
+startAutoRefresh();
+
+// Para quando a página é fechada ou navega para outra
+window.addEventListener('beforeunload', stopAutoRefresh);
+
+// Botão para imprimir
+function printOrder(orderId) {
+    const printUrl = `/admin/orders/order/${orderId}/print/`;
+    window.open(printUrl, '_blank', 'width=800,height=600');
+    return false;
+}
+
+// Atalhos de teclado
+document.addEventListener('keydown', function(event) {
+    // F5 para recarregar
+    if (event.key === 'F5') {
+        event.preventDefault();
+        window.location.reload();
+    }
+    
+    // N para novo pedido
+    if (event.ctrlKey && event.key === 'n') {
+        event.preventDefault();
+        window.location.href = "{% url 'admin:orders_order_add' %}";
+    }
+    
+    // L para lista de pedidos
+    if (event.ctrlKey && event.key === 'l') {
+        event.preventDefault();
+        window.location.href = "{% url 'admin:orders_order_changelist' %}";
+    }
+});
+</script>
+{% endblock %}
