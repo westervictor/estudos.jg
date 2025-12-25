@@ -27,31 +27,46 @@ class OrderItemCustomizationInline(admin.TabularInline):
 
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
-    extra = 0
-    readonly_fields = ('product_info', 'subtotal_display', 'unit_price_display', 'customizations_summary')
-    fields = ('product_info', 'quantity', 'unit_price_display', 'subtotal_display', 'special_instructions', 'customizations_summary')
+    extra = 1
+    fields = ('product', 'quantity', 'unit_price_display', 'subtotal_display', 'special_instructions', 'customizations_summary')
+    readonly_fields = ('unit_price_display', 'subtotal_display', 'customizations_summary')
     
-    @admin.display(description='Produto')
-    def product_info(self, obj):
-        if obj.product:
-            return f"{obj.product.name} ({obj.product.category})"
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Limita produtos aos ativos e ordena por nome"""
+        if db_field.name == 'product':
+            from products.models import Product
+            kwargs['queryset'] = Product.objects.filter(active=True).order_by('name', 'category__name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    
+    @admin.display(description='Preço Unit.')
+    def unit_price_display(self, obj):
+        """Mostra o preço unitário formatado"""
+        if obj.pk and obj.unit_price is not None:
+            return f"R$ {obj.unit_price:.2f}"
+        elif obj.product:
+            # Se não tem preço mas tem produto, mostra o preço do produto
+            return f"R$ {obj.product.current_price:.2f}"
         return "-"
     
     @admin.display(description='Subtotal')
     def subtotal_display(self, obj):
-        return f"R$ {obj.subtotal:.2f}" if obj.subtotal is not None else "-"
-    
-    @admin.display(description='Preço Unit.')
-    def unit_price_display(self, obj):
-        if obj.unit_price is not None:
-            return f"R$ {obj.unit_price:.2f}"
-        return "-"
+        """Calcula e mostra o subtotal"""
+        if obj.pk:
+            subtotal = obj.subtotal
+        elif obj.product and obj.quantity:
+            # Calcula subtotal para novos itens
+            subtotal = obj.product.current_price * obj.quantity
+        else:
+            subtotal = 0
+        return f"R$ {subtotal:.2f}" if subtotal else "-"
     
     @admin.display(description='Personalizações')
     def customizations_summary(self, obj):
-        customs = obj.customizations.all()
-        if customs:
-            return ", ".join([str(c) for c in customs])
+        """Resumo das customizações"""
+        if obj.pk:
+            customs = obj.customizations.all()
+            if customs:
+                return ", ".join([str(c) for c in customs])
         return "-"
 
 
@@ -217,7 +232,7 @@ class OrderAdmin(admin.ModelAdmin):
 
     @admin.display(description='Ações')
     def order_actions(self, obj):
-        return format_html("Botões aqui")
+        return "Botões aqui"
 
     @admin.display(description='Status')
     def status_badge(self, obj):

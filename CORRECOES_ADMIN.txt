@@ -1,0 +1,262 @@
+================================================================================
+DOCUMENTAÇÃO DAS CORREÇÕES REALIZADAS NO ARQUIVO products/admin.py
+================================================================================
+
+Data: 25/12/2025
+Arquivo: products/admin.py
+
+================================================================================
+CORREÇÃO 1: Erro com caractere % em descrição de ação
+================================================================================
+
+ERRO:
+TypeError: %d format: a real number is required, not dict
+Exception Location: django/contrib/admin/options.py, line 1055, in get_action_choices
+
+DESCRIÇÃO DO PROBLEMA:
+O Django admin tenta formatar as descrições de ações usando um dicionário.
+Quando a descrição contém o caractere %, ele é interpretado como especificador
+de formato, causando erro.
+
+LINHA: 90
+
+CÓDIGO ANTES (ERRADO):
+    apply_discount_10.short_description = 'Aplicar 10% de desconto'
+
+CÓDIGO DEPOIS (CORRETO):
+    apply_discount_10.short_description = 'Aplicar 10%% de desconto'
+
+EXPLICAÇÃO:
+O caractere % precisa ser escapado como %% para ser tratado como literal
+ao invés de especificador de formato pelo Django.
+
+================================================================================
+CORREÇÃO 2: format_html sem argumentos - stock_badge (linha 316-318)
+================================================================================
+
+ERRO:
+TypeError: args or kwargs must be provided.
+Exception Location: django/utils/html.py, line 137, in format_html
+
+DESCRIÇÃO DO PROBLEMA:
+A função format_html requer pelo menos um argumento além da string de formato.
+Quando a string HTML não tem placeholders ({}), deve-se usar mark_safe.
+
+LINHA: 316-318
+
+CÓDIGO ANTES (ERRADO):
+    def stock_badge(self, obj):
+        if not obj.manage_stock:
+            return format_html(
+                '<span class="badge" style="background:#17a2b8;color:white;padding:2px 8px;border-radius:10px">NC</span>'
+            )
+
+CÓDIGO DEPOIS (CORRETO):
+    def stock_badge(self, obj):
+        if not obj.manage_stock:
+            return mark_safe(
+                '<span class="badge" style="background:#17a2b8;color:white;padding:2px 8px;border-radius:10px">NC</span>'
+            )
+
+EXPLICAÇÃO:
+Para HTML estático sem necessidade de formatação, use mark_safe ao invés de
+format_html.
+
+================================================================================
+CORREÇÃO 3: format_html sem argumentos - stock_badge (linha 321-323)
+================================================================================
+
+ERRO:
+TypeError: args or kwargs must be provided.
+Exception Location: django/utils/html.py, line 137, in format_html
+
+LINHA: 321-323
+
+CÓDIGO ANTES (ERRADO):
+        if obj.stock_quantity <= 0:
+            return format_html(
+                '<span class="badge" style="background:#dc3545;color:white;padding:2px 8px;border-radius:10px">Esgotado</span>'
+            )
+
+CÓDIGO DEPOIS (CORRETO):
+        if obj.stock_quantity <= 0:
+            return mark_safe(
+                '<span class="badge" style="background:#dc3545;color:white;padding:2px 8px;border-radius:10px">Esgotado</span>'
+            )
+
+EXPLICAÇÃO:
+Mesmo caso da correção anterior - HTML estático deve usar mark_safe.
+
+================================================================================
+CORREÇÃO 4: format_html sem argumentos - has_promotion_badge
+================================================================================
+
+ERRO:
+TypeError: args or kwargs must be provided.
+Exception Location: django/utils/html.py, line 137, in format_html
+
+LINHA: 401-405
+
+CÓDIGO ANTES (ERRADO):
+    def has_promotion_badge(self, obj):
+        if obj.has_promotion:
+            return format_html(
+                '<span class="badge" style="background:#28a745;color:white;padding:4px 10px;border-radius:12px">'
+                '🎯 PROMOÇÃO ATIVA'
+                '</span>'
+            )
+        return '-'
+
+CÓDIGO DEPOIS (CORRETO):
+    def has_promotion_badge(self, obj):
+        if obj.has_promotion:
+            return mark_safe(
+                '<span class="badge" style="background:#28a745;color:white;padding:4px 10px;border-radius:12px">'
+                '🎯 PROMOÇÃO ATIVA'
+                '</span>'
+            )
+        return '-'
+
+EXPLICAÇÃO:
+HTML estático sem placeholders deve usar mark_safe.
+
+================================================================================
+CORREÇÃO 5: format_html sem argumentos - status_badge (PromotionAdmin)
+================================================================================
+
+ERRO:
+TypeError: args or kwargs must be provided.
+Exception Location: django/utils/html.py, line 137, in format_html
+
+LINHA: 701-711
+
+CÓDIGO ANTES (ERRADO):
+    def status_badge(self, obj):
+        if obj.is_active:
+            return format_html(
+                '<span class="badge" style="background:#28a745;color:white;padding:2px 8px;border-radius:10px">'
+                'ATIVA'
+                '</span>'
+            )
+        else:
+            return format_html(
+                '<span class="badge" style="background:#6c757d;color:white;padding:2px 8px;border-radius:10px">'
+                'INATIVA'
+                '</span>'
+            )
+
+CÓDIGO DEPOIS (CORRETO):
+    def status_badge(self, obj):
+        if obj.is_active:
+            return mark_safe(
+                '<span class="badge" style="background:#28a745;color:white;padding:2px 8px;border-radius:10px">'
+                'ATIVA'
+                '</span>'
+            )
+        else:
+            return mark_safe(
+                '<span class="badge" style="background:#6c757d;color:white;padding:2px 8px;border-radius:10px">'
+                'INATIVA'
+                '</span>'
+            )
+
+EXPLICAÇÃO:
+Ambos os retornos de HTML estático foram corrigidos para usar mark_safe.
+
+================================================================================
+CORREÇÃO 6: format_html sem argumentos - status_display (PromotionAdmin)
+================================================================================
+
+ERRO:
+TypeError: args or kwargs must be provided.
+Exception Location: django/utils/html.py, line 137, in format_html
+
+LINHA: 769
+
+CÓDIGO ANTES (ERRADO):
+        else:
+            return format_html('<span style="color:#dc3545">❌ Inativa</span>')
+
+CÓDIGO DEPOIS (CORRETO):
+        else:
+            return mark_safe('<span style="color:#dc3545">❌ Inativa</span>')
+
+EXPLICAÇÃO:
+HTML estático sem placeholders deve usar mark_safe.
+
+================================================================================
+CORREÇÃO 7: Especificador de formato em format_html - profit_margin_display
+================================================================================
+
+ERRO:
+ValueError: Unknown format code 'f' for object of type 'SafeString'
+Exception Location: django/utils/html.py, line 140, in format_html
+
+DESCRIÇÃO DO PROBLEMA:
+O format_html do Django não aceita especificadores de formato como {:.1f}
+diretamente na string de template. É necessário formatar o valor antes.
+
+LINHA: 356-365
+
+CÓDIGO ANTES (ERRADO):
+    def profit_margin_display(self, obj):
+        margin = obj.profit_margin
+        if margin is None:
+            return '-'
+        color = 'green' if margin > 30 else 'orange' if margin > 15 else 'red'
+        return format_html(
+            '<span style="color:{};font-weight:bold">{:.1f}%</span>',
+            color, margin
+        )
+
+CÓDIGO DEPOIS (CORRETO):
+    def profit_margin_display(self, obj):
+        margin = obj.profit_margin
+        if margin is None:
+            return '-'
+        color = 'green' if margin > 30 else 'orange' if margin > 15 else 'red'
+        margin_formatted = f'{margin:.1f}'
+        return format_html(
+            '<span style="color:{};font-weight:bold">{}%</span>',
+            color, margin_formatted
+        )
+
+EXPLICAÇÃO:
+O valor numérico foi formatado ANTES de ser passado para format_html.
+Usamos f-string para formatar o margin com 1 casa decimal, e depois passamos
+o valor já formatado como string para o format_html.
+
+================================================================================
+RESUMO DAS CORREÇÕES
+================================================================================
+
+1. Linha 90: Escapamento de % em descrição de ação (10% → 10%%)
+
+2. Linha 316-318: Troca de format_html por mark_safe (stock_badge - caso NC)
+
+3. Linha 321-323: Troca de format_html por mark_safe (stock_badge - caso Esgotado)
+
+4. Linha 401-405: Troca de format_html por mark_safe (has_promotion_badge)
+
+5. Linha 701-711: Troca de format_html por mark_safe (status_badge PromotionAdmin)
+
+6. Linha 769: Troca de format_html por mark_safe (status_display PromotionAdmin)
+
+7. Linha 356-365: Formatação numérica antes de format_html (profit_margin_display)
+
+================================================================================
+REGRAS GERAIS APLICADAS
+================================================================================
+
+1. Para HTML estático (sem placeholders {}), use mark_safe() ao invés de format_html()
+
+2. Para strings com caractere % em descrições de ações, escapar como %%
+
+3. Para formatação numérica em format_html, formatar o valor antes de passar
+
+4. format_html() deve ser usado apenas quando há placeholders {} na string HTML
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================
+

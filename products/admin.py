@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.db.models import Sum, Count, Q
 from django.db.models.functions import TruncDay, TruncMonth
 from django.utils import timezone
-from django.template.defaultfilters import truncatechars # Adicionado para uso no StockMovementAdmin
+from django.template.defaultfilters import truncatechars
 from decimal import Decimal
 import json
 
@@ -61,25 +61,25 @@ class StockMovementInline(admin.TabularInline):
 def activate_products(modeladmin, request, queryset):
     queryset.update(active=True, status='active')
     messages.success(request, f'{queryset.count()} produto(s) ativado(s)')
-activate_products.short_description = '✅ Ativar produtos selecionados'
+activate_products.short_description = 'Ativar produtos selecionados'
 
 
 def deactivate_products(modeladmin, request, queryset):
     queryset.update(active=False)
     messages.success(request, f'{queryset.count()} produto(s) desativado(s)')
-deactivate_products.short_description = '⏸️ Desativar produtos selecionados'
+deactivate_products.short_description = 'Desativar produtos selecionados'
 
 
 def mark_as_featured(modeladmin, request, queryset):
     queryset.update(featured=True)
     messages.success(request, f'{queryset.count()} produto(s) marcado(s) como destaque')
-mark_as_featured.short_description = '⭐ Marcar como destaque'
+mark_as_featured.short_description = 'Marcar como destaque'
 
 
 def remove_from_featured(modeladmin, request, queryset):
     queryset.update(featured=False)
     messages.success(request, f'{queryset.count()} produto(s) removido(s) dos destaques')
-remove_from_featured.short_description = '🔽 Remover dos destaques'
+remove_from_featured.short_description = 'Remover dos destaques'
 
 
 def apply_discount_10(modeladmin, request, queryset):
@@ -87,7 +87,7 @@ def apply_discount_10(modeladmin, request, queryset):
         product.promotional_price = product.sale_price * Decimal('0.90')
         product.save()
     messages.success(request, f'Desconto de 10% aplicado a {queryset.count()} produto(s)')
-apply_discount_10.short_description = '💸 Aplicar 10%% de desconto'
+apply_discount_10.short_description = 'Aplicar 10%% de desconto'
 
 
 def update_stock(modeladmin, request, queryset):
@@ -120,7 +120,7 @@ def update_stock(modeladmin, request, queryset):
         'products': queryset,
         'title': 'Atualizar Estoque'
     })
-update_stock.short_description = '📦 Atualizar estoque'
+update_stock.short_description = 'Atualizar estoque'
 
 
 # ---------------- Admin Classes ----------------
@@ -180,24 +180,24 @@ class ProductCategoryAdmin(admin.ModelAdmin):
     def activate_categories(self, request, queryset):
         queryset.update(active=True)
         messages.success(request, f'{queryset.count()} categoria(s) ativada(s)')
-    activate_categories.short_description = '✅ Ativar categorias selecionadas'
+    activate_categories.short_description = 'Ativar categorias selecionadas'
     
     def deactivate_categories(self, request, queryset):
         queryset.update(active=False)
         messages.success(request, f'{queryset.count()} categoria(s) desativada(s)')
-    deactivate_categories.short_description = '⏸️ Desativar categorias selecionadas'
+    deactivate_categories.short_description = 'Desativar categorias selecionadas'
 
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = (
         'name_sku', 'category_badge', 'price_info',
-        'stock_status_badge', 'status_badge', 'featured',
+        'stock_badge', 'status_badge', 'featured_badge',
         'profit_margin_display', 'updated_at_formatted', 'quick_actions'
     )
     
     list_display_links = ('name_sku',)
-    list_editable = ('featured',)
+    list_editable = ()
     
     list_filter = (
         'status', 'category', 'featured', 'active', 
@@ -215,7 +215,7 @@ class ProductAdmin(admin.ModelAdmin):
     readonly_fields = (
         'sku', 'slug', 'created_at', 'updated_at',
         'current_price_display', 'profit_margin_display',
-        'discount_percentage_display', 'stock_status_display',
+        'discount_percentage_display', 'stock_status_info',
         'has_promotion_badge', 'total_sold', 'revenue_generated',
         'image_preview'
     )
@@ -250,7 +250,7 @@ class ProductAdmin(admin.ModelAdmin):
             'fields': (
                 ('manage_stock', 'stock_quantity'),
                 'low_stock_threshold',
-                'stock_status_display'
+                'stock_status_info'
             ),
             'classes': ('collapse',)
         }),
@@ -311,14 +311,14 @@ class ProductAdmin(admin.ModelAdmin):
         return format_html('<strong>R$ {}</strong>', obj.current_price)
     price_info.short_description = 'Preço'
     
-    def stock_status_badge(self, obj):
+    def stock_badge(self, obj):
         if not obj.manage_stock:
-            return format_html(
+            return mark_safe(
                 '<span class="badge" style="background:#17a2b8;color:white;padding:2px 8px;border-radius:10px">NC</span>'
             )
         
         if obj.stock_quantity <= 0:
-            return format_html(
+            return mark_safe(
                 '<span class="badge" style="background:#dc3545;color:white;padding:2px 8px;border-radius:10px">Esgotado</span>'
             )
         elif obj.stock_quantity <= obj.low_stock_threshold:
@@ -331,7 +331,7 @@ class ProductAdmin(admin.ModelAdmin):
                 '<span class="badge" style="background:#28a745;color:white;padding:2px 8px;border-radius:10px">{}</span>',
                 obj.stock_quantity
             )
-    stock_status_badge.short_description = 'Estoque'
+    stock_badge.short_description = 'Estoque'
     
     def status_badge(self, obj):
         colors = {
@@ -347,16 +347,21 @@ class ProductAdmin(admin.ModelAdmin):
         )
     status_badge.short_description = 'Status'
     
-    def featured(self, obj):
-        return mark_safe('⭐' if obj.featured else '☆')
-    featured.short_description = 'Destaque'
+    def featured_badge(self, obj):
+        if obj.featured:
+            return mark_safe('⭐')
+        return '☆'
+    featured_badge.short_description = 'Destaque'
     
     def profit_margin_display(self, obj):
         margin = obj.profit_margin
+        if margin is None:
+            return '-'
         color = 'green' if margin > 30 else 'orange' if margin > 15 else 'red'
+        margin_formatted = f'{margin:.1f}'
         return format_html(
-            '<span style="color:{};font-weight:bold">{:.1f}%</span>',
-            color, margin
+            '<span style="color:{};font-weight:bold">{}%</span>',
+            color, margin_formatted
         )
     profit_margin_display.short_description = 'Margem %'
     
@@ -388,13 +393,13 @@ class ProductAdmin(admin.ModelAdmin):
         return '-'
     discount_percentage_display.short_description = 'Desconto %'
     
-    def stock_status_display(self, obj):
+    def stock_status_info(self, obj):
         return obj.stock_status
-    stock_status_display.short_description = 'Status Estoque'
+    stock_status_info.short_description = 'Status Estoque'
     
     def has_promotion_badge(self, obj):
         if obj.has_promotion:
-            return format_html(
+            return mark_safe(
                 '<span class="badge" style="background:#28a745;color:white;padding:4px 10px;border-radius:12px">'
                 '🎯 PROMOÇÃO ATIVA'
                 '</span>'
@@ -453,7 +458,7 @@ class ProductAdmin(admin.ModelAdmin):
         out_of_stock = Product.objects.filter(
             manage_stock=True, stock_quantity=0
         ).count()
-        low_stock = Product.objects.filter(
+        low_stock_products = Product.objects.filter(
             manage_stock=True,
             stock_quantity__gt=0,
             stock_quantity__lte=models.F('low_stock_threshold')
@@ -485,7 +490,7 @@ class ProductAdmin(admin.ModelAdmin):
             'total_products': total_products,
             'active_products': active_products,
             'out_of_stock': out_of_stock,
-            'low_stock': low_stock,
+            'low_stock': low_stock_products,
             'by_category': by_category,
             'top_selling': top_selling,
             'recent_movements': recent_movements,
@@ -577,12 +582,12 @@ class ProductAdmin(admin.ModelAdmin):
             ])
         
         return response
-    export_products_csv.short_description = '📤 Exportar CSV'
+    export_products_csv.short_description = 'Exportar CSV'
     
     def print_product_labels(self, request, queryset):
         """Gera etiquetas para produtos"""
         messages.success(request, f'{queryset.count()} etiqueta(s) preparada(s) para impressão')
-    print_product_labels.short_description = '🏷️ Imprimir etiquetas'
+    print_product_labels.short_description = 'Imprimir etiquetas'
 
 
 @admin.register(ProductTag)
@@ -694,15 +699,15 @@ class PromotionAdmin(admin.ModelAdmin):
     
     def status_badge(self, obj):
         if obj.is_active:
-            return format_html(
+            return mark_safe(
                 '<span class="badge" style="background:#28a745;color:white;padding:2px 8px;border-radius:10px">'
-                '✅ ATIVA'
+                'ATIVA'
                 '</span>'
             )
         else:
-            return format_html(
+            return mark_safe(
                 '<span class="badge" style="background:#6c757d;color:white;padding:2px 8px;border-radius:10px">'
-                '⏸️ INATIVA'
+                'INATIVA'
                 '</span>'
             )
     status_badge.short_description = 'Status'
@@ -745,6 +750,10 @@ class PromotionAdmin(admin.ModelAdmin):
     
     def status_display(self, obj):
         now = timezone.now()
+        if not obj.start_date or not obj.end_date:
+            return format_html(
+                '<span style="color:#ffc107">⚠️ Datas não definidas</span>'
+        )
         
         if obj.start_date > now:
             return format_html(
@@ -762,7 +771,7 @@ class PromotionAdmin(admin.ModelAdmin):
                 obj.end_date.strftime('%d/%m/%Y %H:%M')
             )
         else:
-            return '<span style="color:#dc3545">❌ Inativa</span>'
+            return mark_safe('<span style="color:#dc3545">❌ Inativa</span>')
     status_display.short_description = 'Status Detalhado'
     
     def affected_products_count(self, obj):
@@ -786,12 +795,12 @@ class PromotionAdmin(admin.ModelAdmin):
     def activate_promotions(self, request, queryset):
         queryset.update(active=True)
         messages.success(request, f'{queryset.count()} promoção(ões) ativada(s)')
-    activate_promotions.short_description = '✅ Ativar promoções'
+    activate_promotions.short_description = 'Ativar promoções'
     
     def deactivate_promotions(self, request, queryset):
         queryset.update(active=False)
         messages.success(request, f'{queryset.count()} promoção(ões) desativada(s)')
-    deactivate_promotions.short_description = '⏸️ Desativar promoções'
+    deactivate_promotions.short_description = 'Desativar promoções'
     
     def duplicate_promotions(self, request, queryset):
         for promotion in queryset:
@@ -807,7 +816,7 @@ class PromotionAdmin(admin.ModelAdmin):
             promotion.categories.set(promotion.categories.all())
         
         messages.success(request, f'{queryset.count()} promoção(ões) duplicada(s)')
-    duplicate_promotions.short_description = '📋 Duplicar promoções'
+    duplicate_promotions.short_description = 'Duplicar promoções'
 
 
 @admin.register(StockMovement)
@@ -851,26 +860,33 @@ class StockMovementAdmin(admin.ModelAdmin):
             color, text_color, obj.get_movement_type_display()
         )
     movement_type_badge.short_description = 'Tipo'
-
-    # --- Métodos que faltavam e foram adicionados ---
-
+    
     def quantity_display(self, obj):
-        color = 'green' if obj.quantity > 0 else 'red'
-        return format_html(
-            '<span style="color: {}; font-weight: bold;">{}</span>',
-            color,
-            obj.quantity
-        )
-    quantity_display.short_description = 'Qtd.'
-
+        if obj.quantity >= 0:
+            return format_html(
+                '<span style="color:#28a745">+{}</span>',
+                obj.quantity
+            )
+        else:
+            return format_html(
+                '<span style="color:#dc3545">{}</span>',
+                obj.quantity
+            )
+    quantity_display.short_description = 'Quantidade'
+    
     def previous_new_display(self, obj):
-        return f"{obj.previous_quantity} → {obj.new_quantity}"
-    previous_new_display.short_description = 'Saldo (Ant -> Novo)'
-
+        return format_html(
+            '{} <span style="color:#666">→</span> <strong>{}</strong>',
+            obj.previous_quantity, obj.new_quantity
+        )
+    previous_new_display.short_description = 'Anterior → Novo'
+    
     def reason_short(self, obj):
-        return truncatechars(obj.reason, 30)
+        if obj.reason and len(obj.reason) > 30:
+            return f"{obj.reason[:30]}..."
+        return obj.reason or '-'
     reason_short.short_description = 'Motivo'
-
+    
     def created_at_formatted(self, obj):
         return obj.created_at.strftime('%d/%m/%Y %H:%M')
-    created_at_formatted.short_description = 'Data/Hora'
+    created_at_formatted.short_description = 'Data'

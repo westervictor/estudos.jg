@@ -134,9 +134,9 @@ class Order(models.Model):
     discount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=0.00,
+        default=Decimal('0.00'),  # ❌ Altere 0.00 para isto
         verbose_name='Desconto'
-    )
+   )
     
     tax = models.DecimalField(
         max_digits=10,
@@ -209,31 +209,50 @@ class Order(models.Model):
             
             self.order_number = f"PD-{date_str}-{new_number:03d}"
         
-        # Calcula totais
-        self.calculate_totals()
-        
-        # Atualiza timestamps de status
+        # Atualiza timestamps de status antes de salvar
         if self.status == 'preparing' and not self.prepared_at:
             self.prepared_at = timezone.now()
         elif self.status == 'delivered' and not self.delivered_at:
             self.delivered_at = timezone.now()
         
+        # Salva primeiro para ter PK (necessário para acessar items)
         super().save(*args, **kwargs)
+        
+        # Calcula totais apenas se já tiver PK (pode acessar items)
+        if self.pk:
+            # Recalcula totais baseado nos itens
+            self.calculate_totals()
+            # Atualiza os campos calculados sem chamar save() novamente (evita loop)
+            Order.objects.filter(pk=self.pk).update(
+                subtotal=self.subtotal,
+                delivery_fee=self.delivery_fee,
+                tax=self.tax,
+                total=self.total,
+                prepared_at=self.prepared_at,
+                delivered_at=self.delivered_at
+            )
+            # Atualiza os atributos do objeto em memória
+            self.refresh_from_db()
     
     def calculate_totals(self):
         """Calcula todos os valores do pedido"""
-        items_total = sum(item.subtotal for item in self.items.all())
+        items_total = sum(
+            (item.subtotal for item in self.items.all()),
+             Decimal('0.00') 
+        )
         self.subtotal = items_total
         
         # Se for delivery, adiciona taxa
-        if self.is_delivery and self.delivery_fee == 0:
+        if self.is_delivery and self.delivery_fee == Decimal('0.00'):
             # Taxa padrão de entrega (pode ser configurável)
             self.delivery_fee = Decimal('5.00')
         
         # Calcula impostos (10% exemplo)
+        self.delivery_fee = Decimal(self.delivery_fee)
         self.tax = (self.subtotal + self.delivery_fee) * Decimal('0.10')
         
         # Calcula total final
+        
         self.total = self.subtotal + self.delivery_fee + self.tax - self.discount
     
     @property
@@ -300,7 +319,7 @@ class Order(models.Model):
             order=self,
             product=product,
             quantity=quantity,
-            unit_price=product.price
+            unit_price=product.current_price
         )
         
         if customizations:
@@ -374,10 +393,10 @@ class OrderItem(models.Model):
     
     @property
     def subtotal(self):
-        if self.unit_price is None or self.quantity is None:
-             return 0  # evita crash
-        return self.unit_price * self.quantity
         """Calcula subtotal do item com customizações"""
+        if self.unit_price is None or self.quantity is None:
+            return Decimal('0.00')
+        
         base_price = self.unit_price * self.quantity
         
         # Adiciona preços das customizações
@@ -404,7 +423,7 @@ class OrderItem(models.Model):
     def save(self, *args, **kwargs):
         """Garante que unit_price seja preenchido com preço do produto"""
         if not self.unit_price and self.product:
-            self.unit_price = self.product.price
+            self.unit_price = self.product.current_price
         
         super().save(*args, **kwargs)
         self.order.calculate_totals()
